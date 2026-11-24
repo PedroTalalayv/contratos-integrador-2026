@@ -36,8 +36,34 @@ interface ApiContrato {
   atualizadoEm: string;
 }
 
+/** Índice de reajuste: a API usa IPCA/IGPM/INPC/nenhum; a tela usa NAO_HA para "nenhum". */
+const REAJUSTE_DA_API: Record<string, Contrato["reajuste"]> = {
+  IPCA: "IPCA",
+  IGPM: "IGPM",
+  INPC: "INPC",
+  nenhum: "NAO_HA",
+};
+
+const REAJUSTE_PARA_API: Partial<Record<Contrato["reajuste"], string>> = {
+  IPCA: "IPCA",
+  IGPM: "IGPM",
+  INPC: "INPC",
+  NAO_HA: "nenhum",
+};
+
+function reajusteParaApi(reajuste: Contrato["reajuste"]): string {
+  const valor = REAJUSTE_PARA_API[reajuste];
+  if (!valor) {
+    throw {
+      code: "CAMPO_INVALIDO",
+      message: "A API aceita apenas IPCA, IGP-M, INPC ou sem reajuste. Escolha uma dessas opções.",
+      fieldErrors: { reajuste: "Escolha IPCA, IGP-M, INPC ou Não há." },
+    };
+  }
+  return valor;
+}
+
 function fromApi(contract: ApiContrato): Contrato {
-  const semReajuste = contract.indiceReajuste === "nenhum";
   return {
     id: contract.id,
     numero: contract.numero,
@@ -56,11 +82,7 @@ function fromApi(contract: ApiContrato): Contrato {
       contract.renovacao === "sem_renovacao"
         ? "NAO_RENOVA"
         : contract.renovacao.toUpperCase() as "AUTOMATICA" | "MANUAL",
-    reajuste: semReajuste
-      ? "NAO_HA"
-      : contract.indiceReajuste === "IPCA" || contract.indiceReajuste === "IGPM"
-        ? contract.indiceReajuste
-        : "OUTRO",
+    reajuste: REAJUSTE_DA_API[contract.indiceReajuste ?? "nenhum"] ?? "OUTRO",
     reajusteAnualPercentual: contract.reajusteAnualPercentual ?? undefined,
     indiceReajuste: contract.indiceReajuste ?? undefined,
     avisoPrevioDias: contract.avisoPrevioDias,
@@ -100,7 +122,9 @@ const RENOVACAO_PARA_API = {
  * - empresaId ← cliente selecionado na tela (a API chama o cliente de empresa);
  * - valorMensal ← "Valor total" da tela; mrr ← campo MRR (sem preenchimento, repete o mensal);
  * - avisoPrevioDias ← campo da tela (sem preenchimento, fica 0);
- * - cada serviço vira quantidade 1, com valor unitário e total iguais ao valor informado.
+ * - cada serviço vira quantidade 1, com valor unitário e total iguais ao valor informado;
+ * - reajuste ← índice escolhido (IPCA, IGP-M, INPC ou nenhum) e percentual anual opcional;
+ * - número e status não são enviados: a API gera o número e começa em RASCUNHO.
  * Os valores não são arredondados: a API rejeita mais de 2 casas com PRECISAO_EXCEDIDA.
  */
 function corpoDoNovoContrato(input: ContratoCreateInput) {
@@ -120,6 +144,8 @@ function corpoDoNovoContrato(input: ContratoCreateInput) {
     dataInicio: input.dataInicio,
     vigenciaMeses: input.vigenciaMeses ?? null,
     renovacao: RENOVACAO_PARA_API[input.renovacao],
+    reajusteAnualPercentual: input.reajusteAnualPercentual ?? null,
+    indiceReajuste: reajusteParaApi(input.reajuste),
     avisoPrevioDias: input.avisoPrevioDias ?? 0,
     responsavelId: idDoUsuarioAtual(),
     origem: "contratos",

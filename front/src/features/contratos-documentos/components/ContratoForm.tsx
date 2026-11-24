@@ -33,10 +33,16 @@ const RENOVACAO_OPTIONS = [
 const REAJUSTE_OPTIONS = [
   { value: "IPCA", label: "IPCA" },
   { value: "IGPM", label: "IGP-M" },
+  { value: "INPC", label: "INPC" },
   { value: "SELIC", label: "SELIC" },
   { value: "NAO_HA", label: "Não há" },
   { value: "OUTRO", label: "Outro" },
 ];
+
+// A API aceita apenas IPCA, IGPM, INPC e nenhum (Contrato de Integração do contratos.yaml).
+const REAJUSTE_OPTIONS_REAL = REAJUSTE_OPTIONS.filter((o) =>
+  ["IPCA", "IGPM", "INPC", "NAO_HA"].includes(o.value),
+);
 
 function emptyForm(): FormState {
   return {
@@ -48,6 +54,7 @@ function emptyForm(): FormState {
     vigenciaMeses: undefined,
     renovacao: "AUTOMATICA",
     reajuste: "IPCA",
+    reajusteAnualPercentual: undefined,
     indiceReajuste: "",
     avisoPrevioDias: 30,
     responsavel: "",
@@ -76,6 +83,10 @@ function toInput(state: FormState): ContratoCreateInput {
     renovacao: state.renovacao,
     reajuste: state.reajuste,
     indiceReajuste: state.indiceReajuste?.trim() || undefined,
+    reajusteAnualPercentual:
+      state.reajusteAnualPercentual !== undefined && state.reajusteAnualPercentual !== null
+        ? Number(state.reajusteAnualPercentual)
+        : undefined,
     avisoPrevioDias: state.avisoPrevioDias ? Number(state.avisoPrevioDias) : undefined,
     responsavel: state.responsavel.trim(),
     assinaturaStatus: state.assinaturaStatus,
@@ -97,6 +108,7 @@ export function ContratoForm({ initial, onSubmit, onCancel, submitting }: Contra
       renovacao: initial.renovacao,
       reajuste: initial.reajuste,
       indiceReajuste: initial.indiceReajuste ?? "",
+      reajusteAnualPercentual: initial.reajusteAnualPercentual,
       avisoPrevioDias: initial.avisoPrevioDias,
       responsavel: initial.responsavel,
       assinaturaStatus: initial.assinaturaStatus ?? "PENDENTE",
@@ -166,9 +178,12 @@ export function ContratoForm({ initial, onSubmit, onCancel, submitting }: Contra
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
-    if (!form.numero.trim()) e.numero = "Número do contrato é obrigatório.";
+    // No modo real, a API gera o número e registra o usuário logado como responsável.
+    if (API_MODE === "mock" && !form.numero.trim()) e.numero = "Número do contrato é obrigatório.";
     if (!form.clienteId) e.clienteId = "Selecione um cliente.";
-    if (!form.responsavel.trim()) e.responsavel = "Responsável é obrigatório.";
+    if (API_MODE === "mock" && !form.responsavel.trim()) e.responsavel = "Responsável é obrigatório.";
+    if (API_MODE === "real" && !form.servicos.some((s) => s.nome.trim()))
+      e.servicos = "Informe ao menos um serviço contratado.";
     if (!form.dataInicio) e.dataInicio = "Data de início é obrigatória.";
     if (form.valor < 0) e.valor = "O valor não pode ser negativo.";
     if (form.mrr !== undefined && form.mrr !== null && Number(form.mrr) < 0)
@@ -210,20 +225,32 @@ export function ContratoForm({ initial, onSubmit, onCancel, submitting }: Contra
     <div className="space-y-2">
       {API_MODE === "real" && isEdit && (
         <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          A edição continua bloqueada no modo real. Faltam alinhar responsável UUID e quantidade e
-          valores dos serviços com a API. Nenhum dado será gravado.
+          A edição ainda não está habilitada no modo real. Nenhum dado será gravado.
         </div>
       )}
       <FormSection number={1} title="Identificação">
-        <FormField label="Número do contrato" required error={fieldErr("numero")}>
+        <FormField
+          label="Número do contrato"
+          required={API_MODE === "mock"}
+          error={fieldErr("numero")}
+          hint={API_MODE === "real" ? "Gerado automaticamente pela API ao salvar." : undefined}
+        >
           <Input
-            value={form.numero}
+            value={API_MODE === "real" && !isEdit ? "" : form.numero}
             onChange={(e) => upd("numero", e.target.value)}
-            placeholder="Ex.: CT-2026-001"
+            placeholder={API_MODE === "real" ? "Automático" : "Ex.: CT-2026-001"}
+            disabled={API_MODE === "real"}
           />
         </FormField>
-        <FormField label="Status">
-          <Select value={form.status} onChange={(e) => upd("status", e.target.value as StatusContrato)}>
+        <FormField
+          label="Status"
+          hint={API_MODE === "real" && !isEdit ? "Novos contratos começam em Rascunho." : undefined}
+        >
+          <Select
+            value={form.status}
+            onChange={(e) => upd("status", e.target.value as StatusContrato)}
+            disabled={API_MODE === "real" && !isEdit}
+          >
             {Object.values(StatusContrato).map((s) => (
               <option key={s} value={s}>{STATUS_LABELS[s]}</option>
             ))}
@@ -239,11 +266,17 @@ export function ContratoForm({ initial, onSubmit, onCancel, submitting }: Contra
             required
           />
         </FormField>
-        <FormField label="Responsável" required error={fieldErr("responsavel")}>
+        <FormField
+          label="Responsável"
+          required={API_MODE === "mock"}
+          error={fieldErr("responsavel")}
+          hint={API_MODE === "real" ? "Registrado como o usuário logado." : undefined}
+        >
           <Input
-            value={form.responsavel}
+            value={API_MODE === "real" ? "Usuário logado" : form.responsavel}
             onChange={(e) => upd("responsavel", e.target.value)}
             placeholder="Nome do responsável"
+            disabled={API_MODE === "real"}
           />
         </FormField>
         <FormField label="Modelo de contrato" error={modelosError}>
@@ -290,6 +323,9 @@ export function ContratoForm({ initial, onSubmit, onCancel, submitting }: Contra
           <Button type="button" variant="secondary" size="sm" onClick={addServico}>
             + Adicionar serviço
           </Button>
+          {fieldErr("servicos") && (
+            <p className="text-sm text-red-600">{fieldErr("servicos")}</p>
+          )}
         </div>
         <FormField label="Valor total (R$)" required error={fieldErr("valor")}>
           <Input
@@ -331,18 +367,29 @@ export function ContratoForm({ initial, onSubmit, onCancel, submitting }: Contra
         </FormField>
         <FormField label="Reajuste">
           <Select value={form.reajuste} onChange={(e) => upd("reajuste", e.target.value as never)}>
-            {REAJUSTE_OPTIONS.map((o) => (
+            {(API_MODE === "real" ? REAJUSTE_OPTIONS_REAL : REAJUSTE_OPTIONS).map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
         </FormField>
-        <FormField label="Índice de reajuste">
+        <FormField label="Reajuste anual (%)" hint="Opcional. Percentual aplicado ao índice escolhido.">
           <Input
-            value={form.indiceReajuste}
-            onChange={(e) => upd("indiceReajuste", e.target.value)}
-            placeholder="Ex.: 100% do IPCA"
+            type="number"
+            value={form.reajusteAnualPercentual ?? ""}
+            onChange={(e) =>
+              upd("reajusteAnualPercentual", e.target.value ? Number(e.target.value) : undefined)
+            }
           />
         </FormField>
+        {API_MODE === "mock" && (
+          <FormField label="Índice de reajuste (texto)">
+            <Input
+              value={form.indiceReajuste}
+              onChange={(e) => upd("indiceReajuste", e.target.value)}
+              placeholder="Ex.: 100% do IPCA"
+            />
+          </FormField>
+        )}
         <FormField label="Aviso prévio (dias)">
           <Input
             type="number"

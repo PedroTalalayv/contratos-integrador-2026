@@ -458,7 +458,7 @@ function renovacaoLabel(r: string): string {
   return { AUTOMATICA: "Automática", MANUAL: "Manual", NAO_RENOVA: "Não renova" }[r] ?? r;
 }
 function reajusteLabel(r: string): string {
-  return { IPCA: "IPCA", IGPM: "IGP-M", SELIC: "SELIC", NAO_HA: "Não há", OUTRO: "Outro" }[r] ?? r;
+  return { IPCA: "IPCA", IGPM: "IGP-M", INPC: "INPC", SELIC: "SELIC", NAO_HA: "Não há", OUTRO: "Outro" }[r] ?? r;
 }
 function assinaturaLabel(s?: string): string {
   return { PENDENTE: "Pendente", ASSINADO: "Assinado", NAO_APLICAVEL: "Não aplicável" }[s ?? ""] ?? "—";

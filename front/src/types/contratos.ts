@@ -98,7 +98,7 @@ export interface Contrato {
   vigenciaMeses?: number;
   dataFim?: string; // ISO date
   renovacao: "AUTOMATICA" | "MANUAL" | "NAO_RENOVA";
-  reajuste: "IPCA" | "IGPM" | "SELIC" | "NAO_HA" | "OUTRO";
+  reajuste: "IPCA" | "IGPM" | "INPC" | "SELIC" | "NAO_HA" | "OUTRO";
   reajusteAnualPercentual?: number;
   indiceReajuste?: string;
   avisoPrevioDias?: number;
@@ -124,7 +124,7 @@ export type ContratoCreateInput = Omit<
   | "valorMensal"
   | "responsavelId"
   | "reajusteAnualPercentual"
-> & { valor: number };
+> & { valor: number; reajusteAnualPercentual?: number };
 
 export type ContratoUpdateInput = Partial<ContratoCreateInput>;
 
